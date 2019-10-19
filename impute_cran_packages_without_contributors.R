@@ -11,6 +11,7 @@ lapply(c(packages_list, "crandb"), require, character.only = TRUE)
 rm(packages_list, new_packages)
 # Set variables ----
 URL <- "http://crandb.r-pkg.org/"
+# DB <- "/path/to/sqlite.db"
 DB <- "/Users/c/Projects/neo4j_certification/libraries_io_CRAN/cran.db"
 QUERY <- "select project_name from project_names where length(contributors)=2;"
 NEO4J_URI <- "http://localhost:7474"
@@ -44,17 +45,24 @@ project_names <- RSQLite::dbGetQuery(db, QUERY)$project_name
 RSQLite::dbDisconnect(db)
 # Request CRAN metadata for R projects ----
 cran_projects_crandb_packages <-  parallel::parSapplyLB(
-  cl = cl, X = project_names, FUN = function(pn) crandb::package(pn), USE.NAMES = T
+  cl = cl,
+  X = project_names,
+  FUN = function(pn) crandb::package(pn),
+  USE.NAMES = T
 )
 # Extract Maintainer object from crandb objects ----
 cran_projects_maintainer_objects <- parallel::parSapplyLB(
-  cl = cl, X = cran_projects_crandb_packages,
+  cl = cl,
+  X = cran_projects_crandb_packages,
   FUN = function(package) package$Maintainer,
   USE.NAMES = T
 )
 
 cran_projects_maintainers <- parallel::parSapplyLB(
-  cl = cl, X = cran_projects_maintainer_objects, FUN = extract_maintainer, USE.NAMES = T
+  cl = cl,
+  X = cran_projects_maintainer_objects,
+  FUN = extract_maintainer,
+  USE.NAMES = T
 )
 
 # Free up memory
@@ -69,8 +77,7 @@ for (i in seq_along(cran_projects_maintainers)){
                                     cran_projects_maintainers[[i]])
 }
 # Create Neo4j (HTTP) connection object ----
-# password <- Sys.getenv(GRAPHDBPASS)
-password <- rstudioapi::askForPassword("GRAPHDBPASS:")
+password <- Sys.getenv(GRAPHDBPASS)
 neo4j_con <- neo4r::neo4j_api$new(
   url = NEO4J_URI,
   user = NEO4J_USER,
