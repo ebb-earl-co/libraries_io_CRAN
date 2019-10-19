@@ -51,8 +51,8 @@ open source software. An understanding that we want to share with **you**.
 
 #### Using Open Data Snapshot to Save API Calls
 Libraries.io has an easy-to-use [API](https://libraries.io/api), but
-given that PyPi is the fourth-most-represented package manager in the Open Data
-with 15,000+ packages, the number of API calls to various endpoints to collate
+given that CRAN has 15,000+ packages in the Open Data dataset,
+the number of API calls to various endpoints to collate
 the necessary data is not appealing (also, Libraries.io rate limits to 60 requests
 per minute). Fortunately, [Jeremy Katz on Zenodo](https://zenodo.org/record/2536573)
 maintains snapshots of the Libraries.io Open Data source. The most recent
