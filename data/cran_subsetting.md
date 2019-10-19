@@ -12,7 +12,7 @@ $ wc -l projects-1.4.0-2018-12-22.csv
 ```
 and after filtering for just packages on CRAN:
 ```bash
-$ mlr --csv filter '$Platform == "CRAN"' projects-1.4.0-2018-12-22.csv | wc -l
+$ mlr --csv filter '$Platform == "CRAN"' then uniq -n -g "ID" projects-1.4.0-2018-12-22.csv
  14456
 ```
 which is less than 0.5% of the total.
@@ -24,8 +24,8 @@ $ wc -l dependencies-1.4.0-2018-12-22.csv
 ```
 records. However, those that pertain to CRAN only number
 ```bash
-$ mlr --csv filter '$Platform == "CRAN"' dependencies-1.4.0-2018-12-22.csv | wc -l
- 370563
+$ mlr --csv filter '$Platform == "CRAN"' then uniq -n -g "ID" dependencies-1.4.0-2018-12-22.csv
+ 370562
 ```
 , a 3-orders-of-magnitude reduction in data.
 
