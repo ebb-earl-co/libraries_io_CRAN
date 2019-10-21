@@ -270,3 +270,242 @@ The result of this set of queries is that the following portion of our graph
 is populated:
 
 ![post-projects\_apoc](images/projects_apoc-cypher_result.png)
+#### Loading `Version`s
+Next are the `Version`s of the `Project`s. The source CSV for this type
+of node is [cran\_versions.csv](https://github.com/ebb-earl-co/libraries_io_CRAN/blob/master/data/cran_subsetting.md#versions)
+and the queries are in
+[this file](https://github.com/ebb-earl-co/libraries_io_CRAN/blob/master/cypher/versions_apoc.cypher).
+These queries are run with
+```
+CALL apoc.cypher.runFile('/path/to/libraries_io/cypher/versions_apoc.cypher') yield row, result return 0;
+```
+The result of this set of queries is that the graph has grown to include
+the following nodes and relationships:
+
+![post-versions\_apoc](images/versions_apoc-cypher_result.png)
+#### Loading Dependencies among `Project`s and `Version`s
+Now that there are `Project` nodes and `Version` nodes, it's time to
+link their dependencies. The source CSV for these data is
+[cran\_dependencies.csv](https://github.com/ebb-earl-co/libraries_io_CRAN/blob/master/data/cran_subsetting.md#dependencies)
+and this query is in
+[this file](https://github.com/ebb-earl-co/libraries_io_CRAN/blob/master/cypher/dependencies_apoc.cypher).
+Because the `Project`s and `Version`s already exist, this operation
+is just the one MATCH-MATCH-MERGE query, creating relationships. It is run with
+```
+CALL apoc.cypher.runFile('/path/to/libraries_io/cypher/dependencies_apoc.cypher') yield row, result return 0;
+```
+The result of this set of queries is that the graph has grown to include
+the `DEPENDS_ON` relationship:
+
+![post-dependencies\_apoc](images/dependencies_apoc-cypher_result.png)
+#### Loading `Contributor`s
+Because the data corresponding to `R` `Project` `Contributor`s was
+retrieved from the Libraries.io API, it is not run with Cypher from a file, but
+in a Python script, particularly
+[this section](https://github.com/ebb-earl-co/libraries_io_CRAN/blob/master/python/merge_contributors.py#L127-L138).
+
+Unfortunately, that's not the end of the story for the `Contributor`
+data: over 70% of the `R` `Project`s have no `Contributor`s reported
+by the Libraries.io API. So, even after the ~15k `Project` `Contributor`s
+were scraped from the API, more than 10k of those needed `Contributor`
+data imputed. To do this, I used the
+[`crandb`](https://github.com/r-hub/crandb#the-crandb-api) package
+from one of the Top-10 most-influential `Contributor`s, Gábor Csárdi.
+For each package on CRAN, the `crandb` package will return the information
+on its official CRAN page, in an `R` object that is easily parsed. For
+example, using `crandb` on itself gives `Contributor` in the form of
+Author(s) and Maintainer:
+```r
+library(crandb)
+crandb::package('crandb')
+
+## ...
+## Maintainer: Gábor Csárdi <csardi.gabor@gmail.com>
+## Author: Gábor Csárdi [aut, cre, cph]
+## ...
+```
+The `Maintainer` field is always of the form "Maintainer: name <email>",
+so that text was extracted and used as the `name` property of the
+`Contributor` node for the `Project`. The `Author` field proved to
+be too unstructured for reliable scraping. This process is in
+[this `R` file](https://github.com/ebb-earl-co/libraries_io_CRAN/blob/master/impute_cran_packages_without_contributors.R).
+
+After executing this process, the graph is now in its final form:
+
+![post-merge\_contributors](images/merge_contributors-py_result.png)
+## Preliminary Results
+On the way to understanding the most influential `Contributor`,
+it is useful to find the most influential `Project`. Intuitively,
+the most influential `Project` node should be the node with the
+most (or very many) incoming `DEPENDS_ON` relationships; however,
+the degree centrality algorithm is not as simple as just counting
+the number of relationships incoming and outgoing and ordering by
+descending cardinality (although that is a useful metric for
+understanding a [sub]graph). This is because the subgraph that
+we are considering to understand the influence of `Project` nodes
+also contains relationships to `Version` nodes.
+### Degree Centrality
+So, using the Neo4j Graph Algorithm plugin's
+[`algo.degree`](https://neo4j.com/docs/graph-algorithms/current/algorithms/degree-centrality/#algorithms-degree-centrality)
+procedure, all we need are a node label and a relationship type.
+The arguments to this procedure could be as simple as two strings,
+one for the node label, and one for the relationship type. However,
+as mentioned above, there are two node labels at play here, so we
+will use the [alternative syntax](https://neo4j.com/docs/graph-algorithms/current/algorithms/degree-centrality/#algorithms-degree-cp)
+of the `algo.degree` procedure in which we pass Cypher statements
+returning the set of nodes and the relationships among them.
+
+To run the degree centrality algorithm on the `Project`s written
+in `R` that are hosted on `CRAN`, the syntax
+([found here](https://github.com/ebb-earl-co/libraries_io_CRAN/blob/master/cypher/project_degree_centrality.cypher))
+is:
+```cypher
+call algo.degree(
+    "MATCH (:Language {name:'R'})<-[:IS_WRITTEN_IN]-(p:Project)<-[:HOSTS]-(:Platform {name:'CRAN'}) return id(p) as id",
+    "MATCH (p1:Project)-[:HAS_VERSION]->(:Version)-[:DEPENDS_ON]->(p2:Project) return id(p2) as source, id(p1) as target",
+    {graph: 'cypher', write: True, writeProperty: 'degree_centrality'}
+)
+;
+```
+
+It is **crucially** important to alias as `source` the `Project`
+node MATCHed in the second query as the _end node_ of the
+`DEPENDS_ON` relationship, and the _start node_ of the
+relationship as `target`. This is not officially documented,
+but the example in the documentation has it as such, and I ran
+into Java errors if not aliased exactly that way.
+
+Now that there is a property on each `R` `Project` node denoting its
+degree centrality score, the following query returns the top 10 `Project`s:
+```cypher
+MATCH (:Language {name:'R'})<-[:IS_WRITTEN_IN]-(p:Project)<-[:HOSTS]-(:Platform {name:'CRAN'})
+RETURN p.name, p.degree_centrality ORDER BY p.degree_centrality DESC LIMIT 10
+;
+```
+
+|Project|Degree Centrality Score|
+|---|---|
+|Rcpp|6048|
+|ggplot2|4269|
+|MASS|4024|
+|dplyr|3573|
+|plyr|3017|
+|stringr|2622|
+|Matrix|2512|
+|magrittr|2200|
+|httr|2073|
+|jsonlite|2070|
+
+The `Project` that is out in front by a good margin is `Rcpp`, the `R` package
+that allows developers to integrate `C++` code into `R`; usually for significant
+speedup. Another interesting note is that 4 of these top 10 are part of the "Tidyverse",
+Hadley Wickham's collection of packages designed for data science. Moreover, as
+noted on the [Tidyverse website](https://www.tidyverse.org/packages),
+the last two `Project`s, `httr` and `jsonlite`, are "Tidyverse-adjacent", in that
+they have a similar design and philosophy. It seems that the hypothesis that
+@hadley is the most influential contributor deserves a hefty amount of a priori weight!
+### The Most Influential Contributor
+To properly evaluate the hypothesis, the degree centrality algorithm will be
+run again, this time focusing on the `Contributor` nodes, and their contributions
+to `Project`s. The query
+([found here](https://github.com/ebb-earl-co/libraries_io_CRAN/blob/master/cypher/contributor_degree_centrality.cypher))
+is:
+```cypher
+call algo.degree(
+    "MATCH (:Platform {name:'CRAN'})-[:HOSTS]->(p:Project) with p MATCH (:Language {name:'R'})<-[:IS_WRITTEN_IN]-(p)<-[:CONTRIBUTES_TO]-(c:Contributor) return id(c) as id",
+    "MATCH (c1:Contributor)-[:CONTRIBUTES_TO]->(:Project)-[:HAS_VERSION]->(:Version)-[:DEPENDS_ON]->(:Project)<-[:CONTRIBUTES_TO]-(c2:Contributor) return id(c2) as source, id(c1) as target",
+    {graph: 'cypher', write: True, writeProperty: 'degree_centrality'}
+)
+;
+```
+This puts a property on each `Contributor` node denoting its
+degree centrality score, and the following query returns the top 10 `Contributor`s and their scores:
+```cypher
+MATCH (:Platform {name:'CRAN'})-[:HOSTS]->(p:Project)-[:IS_WRITTEN_IN]->(:Language {name: 'R'})
+MATCH (c:Contributor)-[:CONTRIBUTES_TO]->(p)
+RETURN c.name, c.degree_centrality ORDER BY c.degree_centrality DESC LIMIT 10
+;
+```
+
+|Contributor|GitHub login|Degree Centrality Score|# Top-10 Contributions|# Total Contributions|Total Contributions Rank|
+|---|---|---|---|---|---|
+|Hadley Wickham|hadley|239 829|5|121|2|
+|Jim Hester|jimhester|167 662|3|120|3|
+|Kiril Müller|krlmlr|154 655|3|106|5|
+|Jennifer (Jenny) Bryan|jennybc|119 082|3|57|13|
+|Mara Averick|batpigandme|118 792|3|50|15|
+|Hiroaki Yutani|yutannihilation|98 164|3|49|16|
+|Christophe Dervieux|cderv|98 078|3|36|28|
+|Gábor Csárdi|gaborcsardi|93 968|2|91|6|
+|Jeroen Ooms|jeroen|72 211|2|117|4|
+|Craig Citro|craigcitro|71 207|3|15|107|
+
+As was surmised from the result of the `Project`s degree centrality query, the
+most influential `R` contributor on CRAN is Hadley Wickham, and it's not even close.
+Not only has does @hadley contribute to the second-most `R` projects of _any_
+`Contributor` (only behind `Contributor` Scott Chamberlain who is curiously
+absent from the élité of most influential), he contributes to the most Top-10
+projects of any `Contributor`, with fully half bearing his mark.
+
+There are only 253 `Contributor`s who contribute to a Top-10 project–in terms
+of degree centrality–however even being one of those is not a sufficient
+condition for a high degree centrality score; i.e. even though this table hints
+at a correlation between degree centrality score and number of total projects
+(query [here](https://github.com/ebb-earl-co/libraries_io_CRAN/blob/master/cypher/most_contributions_total.cypher)
+and rank query [here](https://github.com/ebb-earl-co/libraries_io_CRAN/blob/master/cypher/total_contributions_ranks.cypher))
+contributed to, there is a higher association between degree centrality and
+number of _Top-10_ projects contributed to.
+Indeed, using the [`algo.similarity.pearson` function](https://neo4j.com/docs/graph-algorithms/current/experimental-algorithms/pearson/#algorithms-similarity-pearson-function-sample):
+```cypher
+MATCH (:Language {name:'R'})<-[:IS_WRITTEN_IN]-(p:Project)<-[:HOSTS]-(:Platform {name:'CRAN'})
+WITH p order by p.degree_centrality DESC
+WITH collect(p) as r_projects
+UNWIND r_projects as project
+SET project.dc_rank = apoc.coll.indexOf(r_projects, project)+1
+WITH project WHERE project.dc_rank <= 10
+MATCH (project)<-[ct:CONTRIBUTES_TO]-(c:Contributor)
+WITH c, count(ct) as num_top_10_contributions
+WITH collect(c.degree_centrality) as dc, collect(num_top_10_contributions) as tc
+RETURN algo.similarity.pearson(dc, tc) AS degree_centrality_top_10_contributions_correlation_estimate;
+```
+yields an estimate of 0.8494, whereas
+```cypher
+MATCH (:Language {name: 'Python'})<-[:IS_WRITTEN_IN]-(p:Project)<-[:HOSTS]-(:Platform {name: 'Pypi'})
+MATCH (p)<-[ct:CONTRIBUTES_TO]-(c:Contributor)
+WITH c, count(ct) as num_total_contributions
+WITH collect(c.degree_centrality) as dc, collect(num_total_contributions) as tc
+RETURN algo.similarity.pearson(dc, tc) AS degree_centrality_total_contributions_correlation_estimate
+;
+```
+is only 0.6638.
+All this goes to show that, in a network, the centrality of a
+node is determined by contributing to the _right_ nodes,
+not necessarily the _most_ nodes.
+## Conclusion
+Using the Libraries.io Open Data dataset, the `R` projects
+on CRAN and their contributors were analyzed using Neo4j–in
+particular, the degree centrality algorithm–to find out which
+contributor is the most influential to the graph of `R`
+packages, versions, dependencies, and contributors. That contributor
+is @hadley: the Tidyverse creator, Hadley Wickham.
+
+This analysis did not take advantage of a commonly-used feature of
+graph data; weights of the edges between nodes. A future improvement
+of this analysis would be to use the number of versions of a project,
+say, as the weight in the degree centrality algorithm to down-weight
+those projects that have few versions as opposed to the projects that
+have verifiable "weight" in the `R` community, e.g. `dplyr`.
+Similarly, it was not possible to delineate the type of contribution
+made in this analysis; more accurate findings would no doubt result
+from the distinction between a package's author, for example, and a
+contributor who merged a small pull request to fix a typo. Similarly,
+the imputation of just a single contributor for more than 70% of the
+`R` packages potentially influenced in a non-trivial way the topology
+of this network.
+
+Moreover, the data used in this analysis are just a snapshot of the
+state of CRAN from December 22, 2018: needless to say the number of
+versions and projects and contributions is always in flux and so
+behooves updating. However, the Libraries.io Open Data are a good
+window into the dynamics of statistical programming's premier
+community.

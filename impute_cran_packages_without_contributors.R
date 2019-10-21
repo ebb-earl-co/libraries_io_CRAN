@@ -44,30 +44,30 @@ db <- RSQLite::dbConnect(RSQLite::SQLite(), DB)
 project_names <- RSQLite::dbGetQuery(db, QUERY)$project_name
 RSQLite::dbDisconnect(db)
 # Request CRAN metadata for R projects ----
-cran_projects_crandb_packages <-  parallel::parSapplyLB(
+crandb_packages <-  parallel::parSapplyLB(
   cl = cl,
   X = project_names,
   FUN = function(pn) crandb::package(pn),
   USE.NAMES = T
 )
 # Extract Maintainer object from crandb objects ----
-cran_projects_maintainer_objects <- parallel::parSapplyLB(
+crandb_packages_maintainer_objects <- parallel::parSapplyLB(
   cl = cl,
-  X = cran_projects_crandb_packages,
+  X = crandb_packages,
   FUN = function(package) package$Maintainer,
   USE.NAMES = T
 )
 
 cran_projects_maintainers <- parallel::parSapplyLB(
   cl = cl,
-  X = cran_projects_maintainer_objects,
+  X = crandb_packages_maintainer_objects,
   FUN = extract_maintainer,
   USE.NAMES = T
 )
 
 # Free up memory
 parallel::stopCluster(cl)
-rm(project_names, cran_projects_crandb_packages, cran_projects_maintainer_objects,
+rm(project_names, crandb_packages, crandb_packages_maintainer_objects,
    db, DB, QUERY, URL, extract_maintainer, cl)
 # Create vector of neo4r queries ----
 match_project_merge_contributor_queries <- vector()
@@ -92,10 +92,12 @@ cran_r_projects_with_no_contributors <- neo4r::call_neo4j(
   neo4j_con
 )$c[[1]]
 writeLines(paste0("Number of CRAN R projects with no contributors: ",
-				  cran_r_projects_with_no_contributors, "\n"))
+				  cran_r_projects_with_no_contributors, "\n"),
+           con = stderr())
 # Send Neo4j MATCH/MERGE queries via HTTP ----
 for (i in seq_along(match_project_merge_contributor_queries)){
-  writeLines(paste0("Sending query ", i, " to ", neo4j_con$url, "..."))
+  writeLines(paste0("Sending query ", i, " to ", neo4j_con$url, "..."),
+             con = stderr())
   neo4r::call_neo4j(query = match_project_merge_contributor_queries[[i]],
                     con = neo4j_con)
 }
@@ -109,4 +111,29 @@ cran_r_projects_with_no_contributors <- neo4r::call_neo4j(
   neo4j_con
 )$c[[1]]
 writeLines(paste0("Number of CRAN R projects with no contributors: ",
-                  cran_r_projects_with_no_contributors))
+                  cran_r_projects_with_no_contributors),
+           con = stderr())
+# There are 16 packages the Maintainer of which has an apostrophe
+# in the name. Because neo4r only sends queries over HTTP, this is
+# incorrectly parsed into the quotation already being used in the
+# neo4j query, causing an error. Therefore, these queries will be
+# returned to STDOUT in order to copy-and-paste into Neo4j Desktop
+leftovers <- neo4r::call_neo4j(
+    paste0("match (:Platform{name:'CRAN'})-[:HOSTS]->",
+           "(p:Project)-[:IS_WRITTEN_IN]->(:Language{name:'R'}) ",
+           "where NOT EXISTS ((p)<-[:CONTRIBUTES_TO]-(:Contributor)) ",
+           "RETURN p.name as name"),
+    neo4j_con
+)
+leftovers_maintainers <-
+    sapply(
+      X = sapply(
+        X = sapply(
+          X = leftovers$name[[1]], FUN = function(pn) crandb::package(pn), USE.NAMES = T
+        ), FUN = function(package) package$Maintainer, USE.NAMES = T
+      ), FUN = extract_maintainer, USE.NAMES = T
+    )
+leftovers_queries <- vector()
+for (q in leftovers_queries){
+  cat(q, sep = '\n')
+}
