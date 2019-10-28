@@ -7,7 +7,7 @@ CALL apoc.periodic.iterate(
 ;
 CALL apoc.periodic.iterate(
     'CALL apoc.load.csv("cran_versions.csv", {ignore:["Project_Name","Published_Timestamp","Created_Timestamp","Updated_Timestamp"]}) yield map return map',
-    'MATCH (v:Version {ID: apoc.convert.toInteger(map["ID"])}) MATCH (pr:Project {ID: toInteger(map["Project_ID"])}) MERGE (pr)-[:HAS_VERSION]->(v)',
+    'MATCH (v:Version {ID: toInteger(map["ID"])}) MATCH (pr:Project {ID: toInteger(map["Project_ID"])}) MERGE (pr)-[:HAS_VERSION]->(v)',
      {batchSize:2000, iterateList:true, parallel:true}
 )
 ;

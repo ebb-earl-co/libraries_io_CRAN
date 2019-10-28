@@ -66,7 +66,7 @@ $ mlr --csv rename 'Created Timestamp,Created_Timestamp,Updated Timestamp,Update
 ### Dependencies
 File name: `dependencies-1.4.0-2018-12-22.csv`
 ```bash
-$ mlr --csv rename 'Project Name,Project_Name,Project ID,Project_ID,Version Number,Version_Number,Version ID,Version_ID,Dependency Name,Dependency_Name,Dependency Platform,Dependency_Platform,Dependency Kind,Dependency_Kind,Optional Dependency,Optional_Dependency,Dependency Requirements,Dependency_Requirements,Dependency Project ID,Dependency_Project_ID' then filter '$Platform == "CRAN" && $Dependency_Platform == "CRAN"' then cut -x -f "Platform,Dependency_Platform" dependencies-1.4.0-2018-12-22.csv > cran_dependencies.csv
+mlr --csv rename 'Project Name,Project_Name,Project ID,Project_ID,Version Number,Version_Number,Version ID,Version_ID,Dependency Name,Dependency_Name,Dependency Platform,Dependency_Platform,Dependency Kind,Dependency_Kind,Optional Dependency,Optional_Dependency,Dependency Requirements,Dependency_Requirements,Dependency Project ID,Dependency_Project_ID' then filter '$Platform == "CRAN"' then filter '$Dependency_Platform == "CRAN"' then filter '$Dependency_Kind == "imports"' then cut -x -f "Platform,Dependency_Platform" dependencies-1.4.0-2018-12-22.csv > cran_dependencies.csv
 ```
 ### Versions
 File name: `versions-1.4.0-2018-12-22.csv`

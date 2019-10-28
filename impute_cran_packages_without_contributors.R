@@ -10,9 +10,7 @@ if (!"crandb" %in% installed.packages()){
 lapply(c(packages_list, "crandb"), require, character.only = TRUE)
 rm(packages_list, new_packages)
 # Set variables ----
-URL <- "http://crandb.r-pkg.org/"
-# DB <- "/path/to/sqlite.db"
-DB <- "/Users/c/Projects/neo4j_certification/libraries_io_CRAN/cran.db"
+DB <- "/path/to/sqlite.db"
 QUERY <- "select project_name from project_names where length(contributors)=2;"
 NEO4J_URI <- "http://localhost:7474"
 NEO4J_USER <- "neo4j"
@@ -113,6 +111,7 @@ cran_r_projects_with_no_contributors <- neo4r::call_neo4j(
 writeLines(paste0("Number of CRAN R projects with no contributors: ",
                   cran_r_projects_with_no_contributors),
            con = stderr())
+# Leftovers ----
 # There are 16 packages the Maintainer of which has an apostrophe
 # in the name. Because neo4r only sends queries over HTTP, this is
 # incorrectly parsed into the quotation already being used in the
