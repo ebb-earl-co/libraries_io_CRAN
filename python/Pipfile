@@ -1,0 +1,20 @@
+[[source]]
+name = "pypi"
+url = "https://pypi.org/simple"
+verify_ssl = true
+
+[dev-packages]
+pytest = "*"
+hypothesis = "*"
+responses = "*"
+
+[packages]
+py2neo = "*"
+neo4j-driver = "*"
+requests = "*"
+ratelimit = "*"
+backoff = "*"
+neo4j = "*"
+
+[requires]
+python_version = "3.6"
