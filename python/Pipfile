@@ -14,6 +14,7 @@ neo4j-driver = "*"
 requests = "*"
 ratelimit = "*"
 backoff = "*"
+neo4j = "*"
 
 [requires]
 python_version = "3.6"
